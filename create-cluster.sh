@@ -9,6 +9,10 @@ function help(){
    echo ""
    echo "Usage: ./create-cluster.sh <ip> <ports>"
    echo ""
+   echo "Note:"
+   echo "  - At least 6 ports"
+   echo "  - The number of ports must be even"
+   echo ""
    echo "Example":
    echo "  ./create-cluster.sh 127.0.0.1 7001,7002,7003,7004,7005,7006"
    echo ""
@@ -22,7 +26,7 @@ fi
 array=(${ports//,/ })
 port_len=${#array[@]}
 
-if (( $[${port_len}%2] == 1 )); then
+if (( $[${port_len}%2] == 1 || $[${port_len}%2] < 6 )); then
   help
   exit 1
 fi
@@ -93,7 +97,11 @@ echo yes | ./redis/src/redis-cli --cluster create ${temp_str} --cluster-replicas
 
 echo Finish!
 
-sleep 1s
+for((i=1;i<=5;i++));
+do
+  sleep 1s
+  echo -n .
+done
 
 echo 
 echo ---------------------------------------------------------------
