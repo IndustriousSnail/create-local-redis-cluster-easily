@@ -26,7 +26,7 @@ fi
 array=(${ports//,/ })
 port_len=${#array[@]}
 
-if (( $[${port_len}%2] == 1 || $[${port_len}%2] < 6 )); then
+if (( $[${port_len}%2] == 1 || $[${port_len}] < 6 )); then
   help
   exit 1
 fi
