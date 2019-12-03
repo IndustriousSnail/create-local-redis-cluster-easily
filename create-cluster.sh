@@ -19,7 +19,7 @@ do
   fi
 done
 
-if [[ $(( ${#config_options[@]} % 2 )) != 0 || ${#config_options[@]} == 0 ]]; then
+if [[ $(( ${#config_options[@]} % 2 )) != 0 || (${#config_options[@]} == 0 && ${has_config_option} == "true") ]]; then
    echo "error:Custom configuration parameters were wrong!"
    exit
 fi
