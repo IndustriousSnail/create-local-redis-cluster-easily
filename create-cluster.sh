@@ -3,19 +3,53 @@
 ip=$1
 ports=$2
 
+custom_configs=(cluster-require-full-coverage=no protected-mode=no)
+
+# 检测是否有-c参数，如果有，将其解析，并将配置写入custom_configs中
+has_config_option=false
+config_options=()
+for arg in "$@"
+do
+  if [[ "$arg" == "-c" ]];then
+     has_config_option=true
+     continue
+  fi
+  if [[ "$has_config_option" == "true" ]];then
+     config_options[${#config_options[@]}]=$arg
+  fi
+done
+
+if [[ $(( ${#config_options[@]} % 2 )) != 0 || ${#config_options[@]} == 0 ]]; then
+   echo "error:Custom configuration parameters were wrong!"
+   exit
+fi
+
+item_idx=0
+while (($item_idx<${#config_options[@]}))
+do
+  custom_configs[${#custom_configs[@]}]="${config_options[item_idx]}=${config_options[$(($item_idx+1))]}"
+  let item_idx+=2
+done
+
 function help(){
-   echo ""
-   echo "Help you create redis cluster easily!"
-   echo ""
-   echo "Usage: ./create-cluster.sh <ip> <ports>"
-   echo ""
-   echo "Note:"
-   echo "  - At least 6 ports"
-   echo "  - The number of ports must be even"
-   echo ""
-   echo "Example":
-   echo "  ./create-cluster.sh 127.0.0.1 7001,7002,7003,7004,7005,7006"
-   echo ""
+   echo """
+Help you create redis cluster easily!
+
+Usage: ./create-cluster.sh <ip> <ports> [-c [config value [config value...]]
+  <ip>      The IP of Cluster binding.
+  <ports>   Port Numbers for redis. Master in front, slave in back.
+  -c        Custom cluster configuration. The configuration and values are separated by Spaces.
+            You can write multiple configurations
+
+Note:
+  - At least 6 ports.
+  - The number of ports must be even.
+
+Example:
+  ./create-cluster.sh 127.0.0.1 7001,7002,7003,7004,7005,7006
+  ./create-cluster.sh 127.0.0.1 7001,7002,7003,7004,7005,7006 -c timeout 300
+  ./create-cluster.sh 127.0.0.1 7001,7002,7003,7004,7005,7006 -c timeout 300 save '60 360'
+"""
 }
 
 if (( ${#ip} < 7 || ${#ports} <= 2 )); then
@@ -41,11 +75,11 @@ do
     fi
 done
 
-if ( [ -d "./redis" ] && [ ! -f ./redis/src/redis-cli ] );then
+if ( [[ -d "./redis" ]] && [[ ! -f ./redis/src/redis-cli ]] );then
   rm -rf redis
 fi
 
-if [ ! -d "./redis" ];then
+if [[ ! -d "./redis" ]];then
    echo "unzip redis.tar.gz ..."
    tar -zxf redis-5.0.4.tar.gz
    echo "unzip finished!"
@@ -55,7 +89,7 @@ if [ ! -d "./redis" ];then
    make install > /dev/null
    cd ..
 
-   if [ -f "./redis/src/redis-cli" ]; then
+   if [[ -f "./redis/src/redis-cli" ]]; then
        echo "Redis compile success!"
    else
        echo "Redis compile error!"
@@ -63,11 +97,11 @@ if [ ! -d "./redis" ];then
    fi
 fi
 
-if [ -d "./config" ]; then
+if [[ -d "./config" ]]; then
   rm -rf ./config
 fi
 
-if [ -d "./data" ]; then
+if [[ -d "./data" ]]; then
   rm -rf ./data
 fi
 
@@ -77,7 +111,11 @@ mkdir data
 for port in ${array[@]}
 do
   echo -e "port ${port}\ndaemonize yes\ndir \"./data\"\nlogfile \"${port}.log\"\ndbfilename \"dump-${port}.rdb\"\ncluster-enabled yes\ncluster-config-file nodes-${port}.conf\ncluster-require-full-coverage no\nprotected-mode no\nbind ${ip}" > ./config/redis-${port}.conf
-
+  for config_item in "${custom_configs[@]}"
+    do
+      temp=${config_item//=/ }
+      echo -e ${temp} >> ./config/redis-${port}.conf
+    done
   ./redis/src/redis-server ./config/redis-${port}.conf
 done
 
