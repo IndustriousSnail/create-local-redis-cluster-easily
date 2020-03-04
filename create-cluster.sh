@@ -8,8 +8,19 @@ custom_configs=(cluster-require-full-coverage=no protected-mode=no)
 # 检测是否有-c参数，如果有，将其解析，并将配置写入custom_configs中
 has_config_option=false
 config_options=()
+next_is_password_arg=false
+password=''
 for arg in "$@"
 do
+  if [[ "$next_is_password_arg" == "true" ]];then
+     password=$arg
+     next_is_password_arg=false
+     continue
+  fi
+  if [[ "$arg" == "-a" ]];then
+     next_is_password_arg=true
+     continue
+  fi
   if [[ "$arg" == "-c" ]];then
      has_config_option=true
      continue
@@ -24,6 +35,8 @@ if [[ $(( ${#config_options[@]} % 2 )) != 0 || (${#config_options[@]} == 0 && ${
    exit
 fi
 
+echo "The password of the Redis Cluster is $password"
+
 item_idx=0
 while (($item_idx<${#config_options[@]}))
 do
@@ -31,15 +44,22 @@ do
   let item_idx+=2
 done
 
+if [ -n "$password" ]; then
+    config_len=${#custom_configs[@]}
+    custom_configs[$((config_len+1))]="requirepass=$password"
+    custom_configs[$((config_len+2))]="masterauth=$password"
+fi
+
 function help(){
    echo """
 Help you create redis cluster easily!
 
-Usage: ./create-cluster.sh <ip> <ports> [-c [config value [config value...]]
+Usage: ./create-cluster.sh <ip> <ports> [-c [config value [config value...]] [-a password]
   <ip>      The IP of Cluster binding.
   <ports>   Port Numbers for redis. Master in front, slave in back.
   -c        Custom cluster configuration. The configuration and values are separated by Spaces.
-            You can write multiple configurations
+            You can write multiple configurations.
+  -a        The password of the Redis Cluster.
 
 Note:
   - At least 6 ports.
@@ -49,6 +69,8 @@ Example:
   ./create-cluster.sh 127.0.0.1 7001,7002,7003,7004,7005,7006
   ./create-cluster.sh 127.0.0.1 7001,7002,7003,7004,7005,7006 -c timeout 300
   ./create-cluster.sh 127.0.0.1 7001,7002,7003,7004,7005,7006 -c timeout 300 save '60 360'
+  ./create-cluster.sh 127.0.0.1 7001,7002,7003,7004,7005,7006 -a 'mypass'
+  ./create-cluster.sh 127.0.0.1 7001,7002,7003,7004,7005,7006 -c timeout 300 -a 'mypass'
 """
 }
 
@@ -131,7 +153,11 @@ done
 
 sleep 1s
 
-echo yes | ./redis/src/redis-cli --cluster create ${temp_str} --cluster-replicas 1
+if [ -n "$password" ]; then
+    echo yes | ./redis/src/redis-cli --cluster create ${temp_str} --cluster-replicas 1 -a ${password}
+else
+    echo yes | ./redis/src/redis-cli --cluster create ${temp_str} --cluster-replicas 1
+fi
 
 echo Finish!
 
@@ -143,8 +169,12 @@ done
 
 echo 
 echo ---------------------------------------------------------------
-echo 
-./redis/src/redis-cli -h ${ip} -p ${array[0]} cluster nodes
+echo
+if [ -n "$password" ]; then
+    ./redis/src/redis-cli -h ${ip} -p ${array[0]} -a ${password} cluster nodes
+else
+    ./redis/src/redis-cli -h ${ip} -p ${array[0]} cluster nodes
+fi
 
 rm -rf start.sh
 rm -rf stop.sh
