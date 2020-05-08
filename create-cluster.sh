@@ -10,11 +10,22 @@ has_config_option=false
 config_options=()
 next_is_password_arg=false
 password=''
+next_is_redis_version_arg=false
+redis_version='5.0.4'
 for arg in "$@"
 do
   if [[ "$next_is_password_arg" == "true" ]];then
      password=$arg
      next_is_password_arg=false
+     continue
+  fi
+  if [[ "$next_is_redis_version_arg" == "true" ]];then
+     redis_version=$arg
+     next_is_redis_version_arg=false
+     continue
+  fi
+  if [[ "$arg" == "-v" ]];then
+     next_is_redis_version_arg=true
      continue
   fi
   if [[ "$arg" == "-a" ]];then
@@ -36,6 +47,7 @@ if [[ $(( ${#config_options[@]} % 2 )) != 0 || (${#config_options[@]} == 0 && ${
 fi
 
 echo "The password of the Redis Cluster is $password"
+echo "The version of the Redis Cluster is $redis_version"
 
 item_idx=0
 while (($item_idx<${#config_options[@]}))
@@ -60,6 +72,7 @@ Usage: ./create-cluster.sh <ip> <ports> [-c [config value [config value...]] [-a
   -c        Custom cluster configuration. The configuration and values are separated by Spaces.
             You can write multiple configurations.
   -a        The password of the Redis Cluster.
+  -v        Define the redis version.
 
 Note:
   - At least 6 ports.
@@ -67,6 +80,7 @@ Note:
 
 Example:
   ./create-cluster.sh 127.0.0.1 7001,7002,7003,7004,7005,7006
+  ./create-cluster.sh 127.0.0.1 7001,7002,7003,7004,7005,7006 -v 3.2.6
   ./create-cluster.sh 127.0.0.1 7001,7002,7003,7004,7005,7006 -c timeout 300
   ./create-cluster.sh 127.0.0.1 7001,7002,7003,7004,7005,7006 -c timeout 300 save '60 360'
   ./create-cluster.sh 127.0.0.1 7001,7002,7003,7004,7005,7006 -a 'mypass'
@@ -86,16 +100,6 @@ if (( $[${port_len}%2] == 1 || $[${port_len}] < 6 )); then
   help
   exit 1
 fi
-
-for port in ${array[@]}
-do
-    # 先停止这些端口的redis
-    pid=`ps -ef|grep redis|grep ${port}|awk '{printf $2}'`
-    if (( ${#pid} > 0 )); then
-      echo "kill redis in port $port"
-      kill -9 $pid
-    fi
-done
 
 if ( [[ -d "./redis" ]] && [[ ! -f ./redis/src/redis-cli ]] );then
   rm -rf redis
@@ -119,6 +123,28 @@ if [[ ! -d "./redis" ]];then
    fi
 fi
 
+# todo Exception should be thrown when version is not exist.
+if [[ ! -f ./redis-${redis_version}.tar.gz ]];then
+    wget http://download.redis.io/releases/redis-${redis_version}.tar.gz
+fi
+
+if [[ ! -d ./redis-${redis_version} ]];then
+    tar -zxf redis-${redis_version}.tar.gz
+    cd redis-${redis_version}
+    make install > /dev/null
+    cd ..
+fi
+
+for port in ${array[@]}
+do
+    # 先停止这些端口的redis
+    pid=`ps -ef|grep redis|grep ${port}|awk '{printf $2}'`
+    if (( ${#pid} > 0 )); then
+      echo "kill redis in port $port"
+      kill -9 $pid
+    fi
+done
+
 if [[ -d "./config" ]]; then
   rm -rf ./config
 fi
@@ -138,7 +164,7 @@ do
       temp=${config_item//=/ }
       echo -e ${temp} >> ./config/redis-${port}.conf
     done
-  ./redis/src/redis-server ./config/redis-${port}.conf
+  ./redis-${redis_version}/src/redis-server ./config/redis-${port}.conf
 done
 
 echo "start redis-server success."
